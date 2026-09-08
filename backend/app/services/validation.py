@@ -23,9 +23,12 @@ def validate_document(
     """
     Applies business rules to validate the document.
     """
+    required = REQUIRED_FIELDS.get(document_type, REQUIRED_FIELDS.get("other", []))
+    expiry_required = "expiry" in required
+
     checks = {
         "required_fields_present": False,
-        "expiry_valid": False,
+        "expiry_valid": True if not expiry_required else False,
         "mrz_consistent": (
             mrz_consistency.get("consistent", False)
             if mrz_consistency.get("status") != "NOT_APPLICABLE" else True
@@ -35,16 +38,15 @@ def validate_document(
     warnings = []
     
     # 1. Check required fields
-    required = REQUIRED_FIELDS.get(document_type, REQUIRED_FIELDS["passport"])
     missing = [field for field in required if not extracted_fields.get(field)]
     if not missing:
         checks["required_fields_present"] = True
     else:
         warnings.append(f"Missing fields: {', '.join(missing)}")
         
-    # 2. Check Expiry Date
+    # 2. Check Expiry Date if applicable
     expiry_str = extracted_fields.get("expiry")
-    if expiry_str:
+    if expiry_str and expiry_required:
         try:
             # Assuming DD-MM-YYYY format from our OCR/MRZ parser
             expiry_date = datetime.strptime(expiry_str, "%d-%m-%Y")
@@ -56,14 +58,14 @@ def validate_document(
             warnings.append("Invalid expiry date format.")
             
     # Combine results
-    is_valid = all(checks.values())
-    
     status = "VALID"
-    expiry_required = "expiry" in required
     if (expiry_required and not checks["expiry_valid"]) or not checks["mrz_consistent"]:
         status = "SUSPICIOUS"
     elif not checks["required_fields_present"]:
-        status = "INCOMPLETE"
+        status = "INCOMPLETE" if required else "VALID"
+
+    if status == "INCOMPLETE" and not required:
+        status = "VALID"
 
     return {
         "status": status,

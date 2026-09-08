@@ -104,7 +104,11 @@ def parse_document_text(text_lines: list, document_type: str) -> dict:
         return None
 
     field_labels = {
-        "name": ["FULL NAME", "NAME", "SURNAME", "APPLICANT NAME", "HOLDER NAME"],
+        "name": [
+            "FULL NAME", "NAME", "SURNAME", "APPLICANT NAME", "HOLDER NAME",
+            "CANDIDATE NAME", "STUDENT NAME", "NAME OF CANDIDATE", "MR./MS.",
+            "MR.", "MS.", "MR/MS", "SHRI", "SMT.", "THIS IS TO CERTIFY THAT"
+        ],
         "passport_number": ["PASSPORT NO", "PASSPORT NUMBER"],
         "visa_number": ["VISA NO", "VISA NUMBER"],
         "visa_type": ["VISA TYPE", "TYPE OF VISA", "CATEGORY"],
@@ -117,13 +121,32 @@ def parse_document_text(text_lines: list, document_type: str) -> dict:
         "class": ["CLASS OF VEHICLE", "VEHICLE CLASS", "CLASS", "CATEGORY"],
         "nationality": ["NATIONALITY"],
         "dob": ["DATE OF BIRTH", "DOB", "BIRTH DATE"],
-        "issue_date": ["DATE OF ISSUE", "ISSUE DATE", "ISSUED ON"],
+        "issue_date": ["DATE OF ISSUE", "ISSUE DATE", "ISSUED ON", "DATE OF ISSUANCE"],
         "expiry": ["DATE OF EXPIRY", "EXPIRY DATE", "EXPIRATION DATE", "VALID UNTIL", "VALID TO"],
         "sex": ["SEX", "GENDER"],
+        "roll_number": ["STUDENT CODE", "STUDENT ID", "ROLL NO", "ROLL NUMBER", "REG NO", "REGISTRATION NO", "ENROLLMENT NO", "SEAT NO", "CODE"],
+        "course": ["PROGRAMME", "PROGRAM", "COURSE", "BRANCH", "DEPARTMENT", "STREAM", "DEGREE"],
+        "passing_year": ["PASSING YEAR", "YEAR OF PASSING", "EXAMINATION IN", "HELD IN", "SESSION"],
+        "percentage": ["PERCENTAGE", "MARKS OBTAINED", "TOTAL MARKS", "DIVISION", "GRADE", "CGPA"],
     }
 
     for field in data:
         data[field] = value_after_label(field_labels.get(field, []))
+
+    # Clean student code if it matched label
+    if document_type in ["college_id", "marksheet"]:
+        code_match = re.search(r"(?:STUDENT\s*CODE|STUDENT\s*ID|ROLL\s*NO\.?|ROLL\s*NUMBER|REG\s*NO\.?|ENROLLMENT\s*NO\.?)[:\s.-]*([A-Z0-9/]{4,25})", full_text)
+        if code_match and code_match.group(1).upper() != "ISTRAR":
+            data["roll_number"] = code_match.group(1).strip()
+            
+        prog_match = re.search(r"(?:PROGRAMME|PROGRAM|COURSE|BRANCH|STREAM)[:\s.-]*([A-Z0-9.()\s-]{3,30})(?:\s+SESSION|\s+VALID|\n|$)", full_text)
+        if prog_match:
+            data["course"] = prog_match.group(1).strip()
+
+    # Specific regex extractors for Full Name
+    name_label_match = re.search(r"(?:NAME|STUDENT\s*NAME|CANDIDATE\s*NAME|MR\./MS\.|MR\.|MS\.|SHRI|SMT\.)[:\s.-]*([A-Z\s]{3,40})(?:\s+STUDENT\s*CODE|\s+ROLL|\s+SON|\s+DAUGHTER|\s+S/O|\s+D/O|\s+HAVING|\s+BLOOD|\n|$)", full_text)
+    if name_label_match:
+        data["name"] = name_label_match.group(1).strip()
 
     if document_type == "national_id" and not data.get("id_number"):
         aadhaar = re.search(r"(?<!\d)(?:\d[ -]?){12}(?!\d)", full_text)
@@ -139,6 +162,7 @@ def parse_document_text(text_lines: list, document_type: str) -> dict:
         "aadhaar": ("aadhaar_number", r"(?<!\d)(?:\d[ -]*){12}(?!\d)"),
         "pan_card": ("pan_number", r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b"),
         "college_id": ("roll_number", r"\b(?:ROLL|ID|NO)[:\s]*([A-Z0-9-]{4,15})\b"),
+        "marksheet": ("roll_number", r"\b(?:ROLL\s*NO\.?|ROLL)[:\s]*([0-9A-Z]{5,20})\b"),
         "voter_id": ("voter_id_number", r"\b[A-Z]{3}[0-9]{7}\b"),
     }
     if document_type in number_patterns and not data.get(number_patterns[document_type][0]):

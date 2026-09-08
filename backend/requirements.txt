@@ -10,3 +10,6 @@ pydantic
 python-dotenv
 tf-keras
 PyMuPDF
+
+web3
+python-dotenv
